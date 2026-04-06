@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>HealSync — AI Ambulance Routing</title>
+
+<!-- Leaflet CSS (cache-friendly) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+<!-- Awesome Markers -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@400;500;600;700;800;900&display=swap');
+
+:root{
+  --bg:#080b10;--bg2:#0d1117;--bg3:#111820;--bg4:#161f2b;
+  --border:#1a2535;--border2:#253347;
+  --accent:#00e5ff;--accent2:#00ffc3;--warn:#ffb300;--danger:#ff3d3d;--purple:#7c5cfc;
+  --text:#d0dce8;--muted:#4a607a;--muted2:#253040;
+  --font-h:'Barlow Condensed',sans-serif;--font-m:'Space Mono',monospace;
+  --r:6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font-m);font-size:13px;}
+
+/* ── LAYOUT ── */
+#app{display:grid;grid-template-rows:48px 1fr;grid-template-columns:400px 1fr;height:100vh;}
+
+/* ── TOPBAR ── */
+#topbar{
+  grid-column:1/-1;
+  display:flex;align-items:center;gap:14px;
+  padding:0 18px;
+  background:var(--bg2);
+  border-bottom:1px solid var(--border);
+  z-index:200;
+}
+.logo{
+  font-family:var(--font-h);font-weight:900;font-size:1.4rem;
+  letter-spacing:-.01em;color:var(--accent);
+  text-transform:uppercase;
+}
+.logo em{color:var(--text);font-style:normal;}
+.tagline{font-size:.55rem;color:var(--muted);letter-spacing:.18em;text-transform:uppercase;margin-top:1px;}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:6px;}
+.pill{
+  display:flex;align-items:center;gap:5px;
+  padding:3px 9px;border-radius:20px;
+  font-size:.58rem;border:1px solid var(--border2);background:var(--bg3);
+  letter-spacing:.05em;color:var(--muted);
+  transition:border-color .2s;
+}
+.pill.active{border-color:var(--accent2);color:var(--accent2);}
+.pill.warn{border-color:var(--warn);color:var(--warn);}
+.pill.danger{border-color:var(--danger);color:var(--danger);}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+.dot.on{background:var(--accent2);box-shadow:0 0 5px var(--accent2);}
+.dot.off{background:var(--danger);box-shadow:0 0 4px var(--danger);}
+.dot.jam{background:var(--warn);box-shadow:0 0 5px var(--warn);animation:blink 1s infinite;}
+@keyframes blink{50%{opacity:.2;}}
+
+/* ── PANEL ── */
+#panel{
+  background:var(--bg2);border-right:1px solid var(--border);
+  overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+#panel::-webkit-scrollbar{width:3px;}
+#panel::-webkit-scrollbar-thumb{background:var(--border2);}
+
+.sec{border-bottom:1px solid var(--border);padding:14px 16px;}
+.sec-title{
+  font-family:var(--font-h);font-size:.58rem;font-weight:800;
+  letter-spacing:.22em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:12px;
+  display:flex;align-items:center;gap:8px;
+}
+.sec-title::before{
+  content:'';display:block;width:3px;height:14px;
+  background:var(--accent);border-radius:2px;flex-shrink:0;
+}
+
+/* ── FORM ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.field{display:flex;flex-direction:column;gap:3px;}
+.field.full{grid-column:1/-1;}
+label{font-size:.55rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;}
+input,select{
+  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);
+  color:var(--text);font-family:var(--font-m);font-size:.72rem;padding:7px 9px;
+  width:100%;transition:border-color .15s,box-shadow .15s;outline:none;
+}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,229,255,.1);}
+input::placeholder{color:var(--muted);}
+
+/* ── BUTTONS ── */
+.btn{
+  width:100%;padding:10px 14px;border:none;border-radius:var(--r);
+  font-family:var(--font-h);font-weight:800;font-size:.85rem;letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:7px;
+  margin-top:9px;
+}
+.btn:active{transform:scale(.97);}
+.btn:disabled{opacity:.3;cursor:not-allowed;transform:none;}
+.btn-primary{background:var(--accent);color:#080b10;}
+.btn-primary:hover:not(:disabled){background:#33ecff;}
+.btn-danger{background:var(--danger);color:#fff;}
+.btn-danger:hover:not(:disabled){background:#ff6060;}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--text);}
+.btn-ghost:hover:not(:disabled){border-color:var(--accent);color:var(--accent);}
+.btn-gps{
+  width:100%;padding:7px 12px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);
+  color:var(--accent);font-family:var(--font-m);font-size:.68rem;cursor:pointer;margin-top:7px;
+  transition:all .15s;letter-spacing:.05em;
+}
+.btn-gps:hover{border-color:var(--accent);background:var(--muted2);}
+
+/* ── PREDICTION CARD ── */
+.pred-card{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:13px;}
+.cond-badge{
+  display:inline-block;padding:4px 10px;border-radius:3px;
+  font-family:var(--font-h);font-weight:800;font-size:.75rem;letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:11px;
+}
+.b-e{background:rgba(255,61,61,.18);color:var(--danger);border:1px solid rgba(255,61,61,.4);}
+.b-m{background:rgba(255,179,0,.12);color:var(--warn);border:1px solid rgba(255,179,0,.35);}
+.b-l{background:rgba(0,255,195,.08);color:var(--accent2);border:1px solid rgba(0,255,195,.3);}
+.bars{display:flex;flex-direction:column;gap:8px;}
+.bar-row{display:flex;flex-direction:column;gap:3px;}
+.bar-labels{display:flex;justify-content:space-between;font-size:.6rem;color:var(--muted);}
+.bar-track{height:2px;background:var(--muted2);border-radius:2px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:2px;transition:width .8s cubic-bezier(.4,0,.2,1);}
+
+/* ── HOSPITAL CARDS ── */
+.h-card{
+  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);
+  padding:11px 12px;cursor:pointer;margin-bottom:7px;
+  transition:border-color .15s,background .15s;position:relative;overflow:hidden;
+}
+.h-card::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--border2);
+  transition:background .15s;
+}
+.h-card:hover{border-color:var(--accent);background:rgba(0,229,255,.02);}
+.h-card:hover::before{background:var(--accent);}
+.h-card.sel{border-color:var(--accent);background:rgba(0,229,255,.04);}
+.h-card.sel::before{background:var(--accent);}
+.h-rank{
+  font-family:var(--font-h);font-weight:900;font-size:1.3rem;
+  color:var(--muted);position:absolute;right:10px;top:8px;line-height:1;
+}
+.h-type-badge{
+  display:inline-block;font-size:.52rem;padding:1px 5px;border-radius:2px;
+  font-family:var(--font-h);font-weight:700;letter-spacing:.05em;margin-bottom:5px;
+}
+.type-pvt{background:rgba(124,92,252,.15);color:var(--purple);border:1px solid rgba(124,92,252,.3);}
+.type-govt{background:rgba(0,255,195,.08);color:var(--accent2);border:1px solid rgba(0,255,195,.25);}
+.h-name{font-family:var(--font-h);font-weight:700;font-size:.9rem;margin-bottom:3px;padding-right:24px;}
+.h-rec{font-size:.6rem;color:var(--muted);margin-bottom:7px;line-height:1.5;}
+.tags{display:flex;gap:4px;flex-wrap:wrap;}
+.tag{font-size:.55rem;padding:2px 6px;border-radius:3px;background:var(--muted2);color:var(--muted);}
+.tag.ok{background:rgba(0,255,195,.07);color:var(--accent2);}
+.tag.warn{background:rgba(255,179,0,.1);color:var(--warn);}
+.tag.bad{background:rgba(255,61,61,.1);color:var(--danger);}
+.tag.star{background:rgba(255,179,0,.12);color:var(--warn);}
+
+/* ── ROUTE CARD ── */
+.route-card{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:13px;}
+.eta-big{
+  font-family:var(--font-h);font-size:2.4rem;font-weight:900;
+  color:var(--accent);letter-spacing:-.03em;line-height:1;
+}
+.rg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.rg-i{display:flex;flex-direction:column;gap:3px;}
+.rg-l{font-size:.55rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;}
+.rg-v{font-size:.74rem;}
+.reroute-banner{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 10px;margin-bottom:10px;
+  background:rgba(0,255,195,.07);border:1px solid rgba(0,255,195,.25);border-radius:var(--r);
+  font-family:var(--font-h);font-size:.72rem;font-weight:700;color:var(--accent2);
+}
+.jam-alert{
+  margin-top:9px;padding:8px 10px;
+  background:rgba(255,61,61,.08);border:1px solid rgba(255,61,61,.25);border-radius:var(--r);
+  font-size:.62rem;color:var(--danger);line-height:1.5;
+}
+
+/* ── SIM CARD ── */
+.sim-card{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:12px;}
+.sim-pos{font-size:.64rem;color:var(--accent2);margin:7px 0;min-height:15px;font-family:var(--font-m);}
+.sim-hint{font-size:.6rem;color:var(--muted);line-height:1.7;margin-bottom:4px;}
+kbd{
+  display:inline-block;padding:1px 5px;
+  background:var(--muted2);border:1px solid var(--border2);border-radius:3px;
+  font-family:var(--font-m);font-size:.58rem;color:var(--text);
+}
+
+/* ── OUTPUT LOG (matches main.py terminal output) ── */
+.log-block{
+  background:var(--bg);border:1px solid var(--border2);border-radius:var(--r);
+  padding:10px 12px;font-family:var(--font-m);font-size:.62rem;line-height:1.8;
+  color:var(--text);margin-top:9px;max-height:280px;overflow-y:auto;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+}
+.log-block::-webkit-scrollbar{width:3px;}
+.log-block::-webkit-scrollbar-thumb{background:var(--border2);}
+.log-sep{color:var(--muted);user-select:none;}
+.log-key{color:var(--muted);}
+.log-val{color:var(--text);}
+.log-accent{color:var(--accent);}
+.log-green{color:var(--accent2);}
+.log-warn{color:var(--warn);}
+.log-red{color:var(--danger);}
+.log-header{color:var(--accent);font-weight:700;}
+
+/* ── SPINNER ── */
+.spin{display:inline-block;width:12px;height:12px;border:2px solid var(--muted2);border-top-color:var(--accent);border-radius:50%;animation:rot .5s linear infinite;}
+@keyframes rot{to{transform:rotate(360deg);}}
+
+/* ── TOAST ── */
+#toast{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);
+  padding:8px 16px;font-size:.68rem;z-index:9999;
+  opacity:0;transition:opacity .2s;pointer-events:none;max-width:360px;text-align:center;
+}
+#toast.show{opacity:1;}
+
+/* ── MAP AREA ── */
+#map-wrap{position:relative;overflow:hidden;background:var(--bg);}
+#leaflet-map{position:absolute;inset:0;width:100%;height:100%;}
+
+#map-status{
+  position:absolute;top:10px;left:50%;transform:translateX(-50%);
+  background:rgba(8,11,16,.94);border:1px solid var(--border2);border-radius:20px;
+  padding:5px 14px;font-size:.65rem;color:var(--muted);
+  pointer-events:none;z-index:1000;white-space:nowrap;
+}
+#jam-badge{
+  position:absolute;bottom:13px;right:13px;z-index:1000;
+  background:var(--danger);color:#fff;border-radius:var(--r);
+  padding:9px 13px;font-family:var(--font-h);font-weight:800;font-size:.75rem;letter-spacing:.05em;
+  cursor:pointer;display:none;
+  animation:pulse 1.8s infinite;
+}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,61,61,.5);}50%{box-shadow:0 0 0 10px rgba(255,61,61,0);}}
+#map-legend{
+  position:absolute;bottom:13px;left:13px;z-index:1000;
+  background:rgba(8,11,16,.88);border:1px solid var(--border2);border-radius:var(--r);
+  padding:8px 12px;font-size:.6rem;color:var(--muted);display:none;
+}
+.leg{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
+.leg:last-child{margin-bottom:0;}
+.leg-ln{width:20px;height:3px;border-radius:2px;}
+.leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+
+/* Dark Leaflet tile tint */
+.leaflet-tile{filter:brightness(.75) saturate(.65) hue-rotate(185deg) invert(1);}
+.leaflet-control-attribution a,.leaflet-control-attribution{color:var(--muted)!important;background:rgba(8,11,16,.7)!important;font-size:.5rem!important;}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- TOP BAR -->
+<header id="topbar">
+  <div>
+    <div class="logo">Heal<em>Sync</em></div>
+    <div class="tagline">AI Ambulance Routing · Kolkata</div>
+  </div>
+  <div class="tb-right">
+    <div class="pill" id="pill-be"><div class="dot" id="d-be"></div><span id="l-be">Backend…</span></div>
+    <div class="pill" id="pill-net"><div class="dot" id="d-net"></div><span id="l-net">Net…</span></div>
+    <div class="pill" id="t-pill" style="display:none;"><div class="dot" id="d-tr"></div><span id="l-tr">Traffic</span></div>
+    <div class="pill" id="pill-offline" style="display:none;">📴 OFFLINE MODE</div>
+  </div>
+</header>
+
+<!-- SIDE PANEL -->
+<div id="panel">
+
+  <!-- 01 VITALS -->
+  <div class="sec">
+    <div class="sec-title">01 Patient Vitals</div>
+    <div class="g2">
+      <div class="field"><label>Age (years)</label><input type="number" id="age" placeholder="55" min="1" max="120"/></div>
+      <div class="field"><label>Sex</label><select id="sex"><option value="male">Male</option><option value="female">Female</option></select></div>
+      <div class="field"><label>Heart Rate (bpm)</label><input type="number" id="heart_rate" placeholder="72"/></div>
+      <div class="field"><label>Blood Pressure (mmHg)</label><input type="number" id="blood_pressure" placeholder="120"/></div>
+      <div class="field"><label>SpO₂ (%)</label><input type="number" id="spo2" placeholder="98" min="60" max="100"/></div>
+      <div class="field"><label>Body Temp (°C)</label><input type="number" id="body_temperature" placeholder="37.0" step="0.1"/></div>
+      <div class="field full"><label>Glucose (mg/dL)</label><input type="number" id="glucose" placeholder="100"/></div>
+    </div>
+  </div>
+
+  <!-- 02 GPS -->
+  <div class="sec">
+    <div class="sec-title">02 Ambulance GPS</div>
+    <div class="g2">
+      <div class="field"><label>Latitude</label><input type="number" id="amb_lat" placeholder="22.6769" step="0.0001"/></div>
+      <div class="field"><label>Longitude</label><input type="number" id="amb_lon" placeholder="88.3792" step="0.0001"/></div>
+    </div>
+    <button class="btn-gps" onclick="detectGPS()">⌖ Auto-Detect GPS Location</button>
+    <button class="btn btn-primary" id="btn-predict" onclick="submitPredict()">Predict &amp; Find Hospitals →</button>
+  </div>
+
+  <!-- 03 PREDICTION -->
+  <div class="sec" id="sec-pred" style="display:none;">
+    <div class="sec-title">03 AI Prediction</div>
+    <div class="pred-card" id="pred-card"></div>
+  </div>
+
+  <!-- 04 HOSPITALS -->
+  <div class="sec" id="sec-hosp" style="display:none;">
+    <div class="sec-title">04 Select Hospital</div>
+    <div id="hosp-list"></div>
+    <button class="btn btn-primary" id="btn-route" onclick="confirmHospital()" disabled>Compute Route →</button>
+  </div>
+
+  <!-- 05 ROUTE -->
+  <div class="sec" id="sec-route" style="display:none;">
+    <div class="sec-title">05 Route Result</div>
+    <div class="route-card" id="route-card"></div>
+    <!-- Terminal-style log (matches main.py output) -->
+    <div class="log-block" id="route-log"></div>
+  </div>
+
+  <!-- 06 SIM -->
+  <div class="sec" id="sec-sim" style="display:none;">
+    <div class="sec-title">06 Simulate Ambulance</div>
+    <div class="sim-card">
+      <div class="sim-pos" id="sim-pos">Position: —</div>
+      <div class="sim-hint"><kbd>→</kbd> advance &nbsp;·&nbsp; <kbd>J</kbd> jam &amp; reroute &nbsp;·&nbsp; <kbd>R</kbd> reset &nbsp;·&nbsp; <kbd>F</kbd> fit map</div>
+      <button class="btn btn-ghost" onclick="stepAmb()">→ Advance Ambulance</button>
+      <button class="btn btn-danger" onclick="triggerJam()">⚠ Jam Here — Reroute</button>
+      <button class="btn btn-ghost" onclick="resetSim()">↺ Reset Simulation</button>
+    </div>
+    <!-- Reroute log -->
+    <div class="log-block" id="reroute-log" style="display:none;"></div>
+  </div>
+
+</div><!-- /panel -->
+
+<!-- MAP -->
+<div id="map-wrap">
+  <div id="leaflet-map"></div>
+  <div id="map-status">Waiting for input…</div>
+  <div id="jam-badge" onclick="triggerJam()">⚠ JAM DETECTED — Reroute</div>
+  <div id="map-legend">
+    <div class="leg"><div class="leg-ln" style="background:var(--accent);"></div>Active route</div>
+    <div class="leg"><div class="leg-ln" style="background:var(--accent2);border-top:2px dashed var(--accent2);background:none;border-bottom:none;"></div>Rerouted path</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--accent);"></div>Ambulance</div>
+    <div class="leg"><div class="leg-dot" style="background:var(--danger);"></div>Selected hospital</div>
+    <div class="leg"><div class="leg-dot" style="background:rgba(255,61,61,.4);border:2px solid var(--danger);"></div>Other hospitals</div>
+  </div>
+</div>
+
+</div><!-- /app -->
+<div id="toast"></div>
+
+<!-- Leaflet JS -->
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+
+<script>
+"use strict";
+const API = "http://localhost:8000";
+
+/* ═══════════════════════ MAP INIT ═══════════════════════ */
+const map = L.map("leaflet-map",{center:[22.5726,88.3639],zoom:12,zoomControl:true});
+
+// OSM tiles — browser caches these for offline re-use
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+  maxZoom:19,
+  attribution:'© OpenStreetMap contributors',
+  subdomains:['a','b','c']
+}).addTo(map);
+
+let routeLayer=null,rerouteLayer=null,ambMarker=null,destMarker=null;
+let hospMarkers=[],jamCircle=null,jamMarker=null;
+
+// Icons
+const ambIcon=L.divIcon({className:"",iconSize:[26,26],iconAnchor:[13,13],
+  html:`<div style="width:26px;height:26px;border-radius:50%;background:#00e5ff;border:3px solid #080b10;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;color:#080b10;box-shadow:0 0 12px rgba(0,229,255,.8);font-family:'Barlow Condensed',sans-serif;">A</div>`});
+const hospSelIcon=L.divIcon({className:"",iconSize:[26,26],iconAnchor:[13,13],
+  html:`<div style="width:26px;height:26px;border-radius:50%;background:#ff3d3d;border:3px solid #fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:11px;color:#fff;box-shadow:0 0 10px rgba(255,61,61,.8);font-family:'Barlow Condensed',sans-serif;">H</div>`});
+const hospDimIcon=L.divIcon({className:"",iconSize:[14,14],iconAnchor:[7,7],
+  html:`<div style="width:14px;height:14px;border-radius:50%;background:rgba(255,61,61,.4);border:2px solid rgba(255,61,61,.8);box-shadow:0 0 4px rgba(255,61,61,.4);"></div>`});
+
+/* ═══════════════════════ STATE ═══════════════════════ */
+const S={
+  ambLat:null,ambLon:null,
+  hospitals:[],selected:null,
+  routeResult:null,routeCoords:[],rerouteCoords:[],
+  simIndex:0,
+  backendOnline:false,netOnline:false,
+  ambPos:null,destPos:null,
+};
+
+/* ═══════════════════════ MAP HELPERS ═══════════════════════ */
+function clearHospMarkers(){hospMarkers.forEach(m=>map.removeLayer(m));hospMarkers=[];}
+function clearJam(){if(jamCircle){map.removeLayer(jamCircle);jamCircle=null;}if(jamMarker){map.removeLayer(jamMarker);jamMarker=null;}}
+
+function drawRoute(coords,isReroute){
+  const color=isReroute?"#00ffc3":"#00e5ff";
+  const opts={color,weight:5,opacity:0.9,dashArray:isReroute?"10,6":null};
+  const layer=L.polyline(coords,opts).addTo(map);
+  layer.bindTooltip(`<div>${isReroute?"↺ Rerouted route":"Active route"}</div>`,{sticky:true});
+  return layer;
+}
+
+function drawAmbulance(pos){
+  if(ambMarker){ambMarker.setLatLng(pos);}
+  else{ambMarker=L.marker(pos,{icon:ambIcon,zIndexOffset:1000}).addTo(map);ambMarker.bindTooltip("Ambulance",{sticky:true});}
+}
+
+function drawDestination(pos,name){
+  if(destMarker){map.removeLayer(destMarker);}
+  destMarker=L.marker(pos,{icon:hospSelIcon,zIndexOffset:900}).addTo(map);
+  destMarker.bindTooltip(name,{sticky:true});
+}
+
+function drawHospitalPins(hospitals){
+  clearHospMarkers();
+  hospitals.forEach(h=>{
+    const m=L.marker([h.latitude,h.longitude],{icon:hospDimIcon,zIndexOffset:500}).addTo(map);
+    m.bindTooltip(`${h.name}<br>${h.distance_km} km`,{sticky:true});
+    hospMarkers.push(m);
+  });
+}
+
+function drawJamOverlay(lat,lon,radius,queue,edges){
+  clearJam();
+  jamCircle=L.circle([lat,lon],{color:"#ffb300",fillColor:"#ffb300",fillOpacity:.18,radius:radius||80,weight:2}).addTo(map);
+  jamCircle.bindTooltip(`Jam radius: ${radius||80} m | est. queue: ${queue||"~0.24"} km | ${edges||14} edges slowed`,{sticky:true});
+  const jIcon=L.divIcon({className:"",iconSize:[28,28],iconAnchor:[14,14],
+    html:`<div style="font-size:20px;line-height:1;filter:drop-shadow(0 0 5px #ffb300);">⚠</div>`});
+  jamMarker=L.marker([lat,lon],{icon:jIcon,zIndexOffset:1100}).addTo(map);
+  jamMarker.bindPopup(`<b>Jam epicentre</b><br>Radius: ${radius||80} m<br>Est. queue: ${queue||"0.24"} km<br>Edges slowed: ${edges||14}`,{maxWidth:200});
+  jamMarker.bindTooltip(`Jam epicentre (${lat.toFixed(4)},${lon.toFixed(4)})`,{sticky:true});
+}
+
+function fitAll(){
+  const pts=[S.ambPos,S.destPos,...S.routeCoords,...S.rerouteCoords].filter(Boolean);
+  if(!pts.length){map.setView([22.5726,88.3639],12);return;}
+  map.fitBounds(L.latLngBounds(pts),{padding:[40,40]});
+}
+
+/* ═══════════════════════ GPS ═══════════════════════ */
+function detectGPS(){
+  setStatus("⌖ Detecting GPS…");
+  if(!navigator.geolocation){useDefaultGPS();return;}
+  navigator.geolocation.getCurrentPosition(
+    p=>{setGPS(p.coords.latitude,p.coords.longitude);toast("GPS detected");},
+    ()=>useDefaultGPS(),
+    {enableHighAccuracy:true,timeout:5000}
+  );
+}
+function useDefaultGPS(){setGPS(22.6769,88.3792);toast("GPS unavailable — demo: Dum Dum, Kolkata");}
+function setGPS(lat,lon){
+  document.getElementById("amb_lat").value=lat.toFixed(6);
+  document.getElementById("amb_lon").value=lon.toFixed(6);
+  S.ambLat=lat;S.ambLon=lon;S.ambPos=[lat,lon];
+  map.setView([lat,lon],14);drawAmbulance([lat,lon]);
+  setStatus(`GPS: ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+}
+
+/* ═══════════════════════ PREDICT ═══════════════════════ */
+async function submitPredict(){
+  const v=readVitals();
+  const lat=parseFloat(document.getElementById("amb_lat").value);
+  const lon=parseFloat(document.getElementById("amb_lon").value);
+  if(!v||isNaN(lat)||isNaN(lon)){toast("Fill all fields first");return;}
+  S.ambLat=lat;S.ambLon=lon;S.ambPos=[lat,lon];
+  setBtnLoad("btn-predict","Predicting…");setStatus("Running AI prediction…");
+  let data;
+  if(S.backendOnline){
+    try{
+      const res=await fetch(`${API}/predict`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({vitals:v,ambulance_lat:lat,ambulance_lon:lon})});
+      if(!res.ok)throw new Error((await res.json()).detail||"API error");
+      data=await res.json();
+    }catch(e){toast("Backend error — using offline simulation");data=simPredict(v,lat,lon);}
+  }else{data=simPredict(v,lat,lon);}
+  resetBtn("btn-predict","Predict & Find Hospitals →");
+  handlePredict(data);
+}
+
+function readVitals(){
+  for(const id of["age","heart_rate","blood_pressure","spo2","body_temperature","glucose"])
+    if(!document.getElementById(id).value)return null;
+  return{
+    age:+document.getElementById("age").value,
+    sex:document.getElementById("sex").value,
+    heart_rate:+document.getElementById("heart_rate").value,
+    blood_pressure:+document.getElementById("blood_pressure").value,
+    spo2:+document.getElementById("spo2").value,
+    body_temperature:+document.getElementById("body_temperature").value,
+    glucose:+document.getElementById("glucose").value,
+  };
+}
+
+/* ── Offline simulation (mirrors main.py hospital output) ── */
+function simPredict(v,lat,lon){
+  const hr=v.heart_rate,bp=v.blood_pressure,spo2=v.spo2;
+  const cond=hr>110||bp>150?"heart emergency":spo2<93?"respiratory emergency":bp>130?"moderate risk - possible heart issue":"low risk";
+  const hospitals=[
+    mkH(1,"Netaji Sebayan Hospital","H001","PVT",22.6832,88.3718,true,false,4,8,lat,lon),
+    mkH(2,"Sahid Khudiram Bose Hospital","H002","PVT",22.6701,88.3753,true,false,2,6,lat,lon),
+    mkH(3,"Zenith Super Specialist Hospital","H003","PVT",22.6700,88.3750,true,false,0,15,lat,lon),
+    mkH(4,"R G Kar Medical College & Hospital","H010","GOVT",22.60484,88.37792,true,false,0,2,lat,lon),
+    mkH(5,"Sagore Dutta Hospital","H004","GOVT",22.6811,88.3761,false,true,0,0,lat,lon),
+  ];
+  return{
+    prediction:{most_probable_condition:cond,
+      heart_disease_probability:Math.min(Math.max((hr-60)/80*100,5),95),
+      stroke_probability:Math.min(Math.max((bp-110)/80*100,5),90),
+      respiratory_problem_probability:Math.min(Math.max((98-spo2)/20*100,5),90)},
+    hospitals,
+    traffic:{traffic_period:"night",avg_multiplier:1.03,jam_expected:false},
+  };
+}
+
+function mkH(rank,name,id,type,hlat,hlon,dept,fb,icu,gen,alat,alon){
+  const dist=hvKm(alat,alon,hlat,hlon);
+  const eta=Math.round(dist/40*60*1.3*10)/10;
+  const noBeds=icu===0&&gen===0;
+  const recParts=[];
+  recParts.push(`→ ${dist<2?"Very close":"Nearby"} (${dist.toFixed(1)} km)`);
+  if(dept) recParts.push("has the required specialty department");
+  if(icu>0) recParts.push(`${icu} ICU beds available`);
+  else if(gen>0) recParts.push(`${gen} general beds available`);
+  if(noBeds) recParts.push("⚠ no beds currently available");
+  if(fb) recParts.push("nearest govt hospital — large capacity facility");
+  recParts.push(type==="GOVT"?"government facility (lower cost)":"private facility (faster admission likely)");
+  return{rank,name,id,type,latitude:hlat,longitude:hlon,
+    distance_km:Math.round(dist*100)/100,travel_time_min:eta,
+    icu_beds_available:icu,general_beds_available:gen,
+    department_match:dept,nearest_govt_fallback:fb,no_beds_warning:noBeds,
+    recommendation:recParts.join(" · "),route:[],routing_method:"haversine_estimate"};
+}
+
+function hvKm(la1,lo1,la2,lo2){
+  const R=6371,d=x=>x*Math.PI/180;
+  const a=Math.sin(d(la2-la1)/2)**2+Math.cos(d(la1))*Math.cos(d(la2))*Math.sin(d(lo2-lo1)/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function handlePredict(data){
+  S.hospitals=data.hospitals;S.selected=null;
+  drawAmbulance(S.ambPos);
+  drawHospitalPins(data.hospitals);
+  fitAll();
+  renderPred(data.prediction);
+  renderHosps(data.hospitals);
+  show("sec-pred");show("sec-hosp");
+  setStatus(`${data.hospitals.length} hospitals found · select to route`);
+}
+
+/* ═══════════════════════ RENDER PREDICTION ═══════════════════════ */
+function renderPred(p){
+  const c=p.most_probable_condition;
+  const cls=c.includes("emergency")?"b-e":c.includes("moderate")?"b-m":"b-l";
+  document.getElementById("pred-card").innerHTML=`
+    <div class="cond-badge ${cls}">${c.toUpperCase()}</div>
+    <div class="bars">
+      ${mkBar("Heart Disease",p.heart_disease_probability,"#ff3d3d")}
+      ${mkBar("Stroke",p.stroke_probability,"#7c5cfc")}
+      ${mkBar("Respiratory",p.respiratory_problem_probability,"#00e5ff")}
+    </div>`;
+}
+function mkBar(label,val,color){
+  return`<div class="bar-row">
+    <div class="bar-labels"><span>${label}</span><span>${val.toFixed(1)}%</span></div>
+    <div class="bar-track"><div class="bar-fill" style="width:${val}%;background:${color};"></div></div>
+  </div>`;
+}
+
+/* ═══════════════════════ RENDER HOSPITALS (matches main.py list) ═══════════════════════ */
+let _selCard=null;
+function renderHosps(hospitals){
+  const list=document.getElementById("hosp-list");
+  list.innerHTML="";
+  hospitals.forEach(h=>{
+    const div=document.createElement("div");
+    div.className="h-card";div.dataset.id=h.id;
+    div.onclick=()=>selHosp(h,div);
+    const typeClass=h.type==="GOVT"?"type-govt":"type-pvt";
+    const tags=[];
+    tags.push(`<span class="tag ${h.type==="GOVT"?"ok":""}">[${h.type}]</span>`);
+    if(h.department_match) tags.push(`<span class="tag ok">✓ dept</span>`);
+    if(h.nearest_govt_fallback) tags.push(`<span class="tag star">★ NEAREST GOVT</span>`);
+    if(h.no_beds_warning) tags.push(`<span class="tag bad">⚠ NO BEDS</span>`);
+    if(h.icu_beds_available>0) tags.push(`<span class="tag">ICU ${h.icu_beds_available} free</span>`);
+    else if(h.general_beds_available>0) tags.push(`<span class="tag">${h.general_beds_available} gen</span>`);
+    tags.push(`<span class="tag">~${h.distance_km} km</span>`);
+    tags.push(`<span class="tag">~${h.travel_time_min} min</span>`);
+    div.innerHTML=`
+      <div class="h-rank">${h.rank}</div>
+      <div><span class="h-type-badge ${typeClass}">${h.type}</span></div>
+      <div class="h-name">${h.name}</div>
+      <div class="h-rec">${h.recommendation||""}</div>
+      <div class="tags">${tags.join("")}</div>`;
+    list.appendChild(div);
+  });
+}
+
+function selHosp(h,div){
+  if(_selCard) _selCard.classList.remove("sel");
+  div.classList.add("sel");_selCard=div;
+  S.selected=h;
+  document.getElementById("btn-route").disabled=false;
+  S.destPos=[h.latitude,h.longitude];
+  drawDestination([h.latitude,h.longitude],h.name);
+  map.setView([h.latitude,h.longitude],13);
+  toast(`Selected: ${h.name}`);
+}
+
+/* ═══════════════════════ ROUTE ═══════════════════════ */
+async function confirmHospital(){
+  if(!S.selected){toast("Select a hospital first");return;}
+  setBtnLoad("btn-route","Computing Route…");setStatus("Computing road route…");
+  let data;
+  if(S.backendOnline){
+    try{
+      const res=await fetch(`${API}/route`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({hospital:S.selected,ambulance_lat:S.ambLat,ambulance_lon:S.ambLon,force_offline:false,slow_edges:[]})});
+      if(!res.ok)throw new Error((await res.json()).detail||"Route error");
+      data=await res.json();
+    }catch(e){toast("Routing offline");data=simRoute(S.selected,false);}
+  }else{data=simRoute(S.selected,false);}
+  resetBtn("btn-route","Compute Route →");
+  handleRoute(data,false);
+}
+
+/* ── Offline route simulation ── */
+function simRoute(h,rerouted,fromLat,fromLon){
+  const la1=fromLat??S.ambLat,lo1=fromLon??S.ambLon;
+  const la2=h.latitude,lo2=h.longitude;
+  const steps=50,coords=[];
+  for(let i=0;i<=steps;i++){
+    const t=i/steps;
+    const bend=rerouted?0.009:0.005;
+    const curve=Math.sin(t*Math.PI);
+    const la=la1+(la2-la1)*t+curve*bend*(la2>la1?1:-1);
+    const lo=lo1+(lo2-lo1)*t+(rerouted?-.006:0)*Math.sin(t*Math.PI*1.5);
+    coords.push([la,lo]);
+  }
+  const dist=hvKm(la1,lo1,la2,lo2);
+  const baseEta=dist/40*60;
+  const mult=rerouted?1.05:1.25;
+  const eta=Math.round(baseEta*mult*10)/10;
+  const saved=rerouted?Math.round(h.travel_time_min*.13*10)/10:null;
+  const remKm=rerouted?Math.round(dist*100)/100:null;
+  return{
+    hospital:{...h,route:coords,routing_method:rerouted?"astar_reroute_close":"astar_online",
+      travel_time_min:eta,distance_km:Math.round(dist*100)/100,
+      jam_detected:false,jam_confidence:.05,traffic_multiplier:1.03,traffic_period:"night",
+      lanes_used:true,tier:rerouted?"short":"long",
+      map_waypoints:coords.length,raw_waypoints:coords.length+Math.floor(steps*.2),
+      reroute_mode:rerouted?"A_close":null,
+      reroute_trigger_km:remKm,
+      jam_radius:80,jam_queue_km:0.24,jam_edges:14,
+    },
+    rerouted,eta_saved_min:saved,
+  };
+}
+
+function handleRoute(data,isReroute){
+  S.routeResult=data;
+  const h=data.hospital;
+  const coords=(h.route||[]).map(c=>[c[0],c[1]]);
+  if(isReroute){
+    S.rerouteCoords=coords;
+    if(rerouteLayer){map.removeLayer(rerouteLayer);}
+    rerouteLayer=drawRoute(coords,true);
+  }else{
+    S.routeCoords=coords;S.rerouteCoords=[];
+    if(routeLayer){map.removeLayer(routeLayer);}
+    if(rerouteLayer){map.removeLayer(rerouteLayer);rerouteLayer=null;}
+    routeLayer=drawRoute(coords,false);
+  }
+  S.simIndex=0;
+  S.destPos=[h.latitude,h.longitude];
+  if(coords.length){S.ambPos=coords[0];S.ambLat=coords[0][0];S.ambLon=coords[0][1];}
+  drawAmbulance(S.ambPos);
+  drawDestination(S.destPos,h.name);
+  fitAll();
+  document.getElementById("jam-badge").style.display=h.jam_confidence>=.35?"block":"none";
+  document.getElementById("map-legend").style.display="block";
+  renderRoute(h,isReroute,data.eta_saved_min);
+  buildRouteLog(h,isReroute,data.eta_saved_min);
+  show("sec-route");show("sec-sim");
+  setStatus(isReroute
+    ?`↺ Rerouted · ${h.distance_km} km · ${h.travel_time_min} min`
+    :`Route: ${h.distance_km} km · ${h.travel_time_min} min`);
+  updateSimPos();
+}
+
+/* ── Route card (summary) ── */
+function renderRoute(h,rerouted,saved){
+  const rerouteBanner=rerouted?`<div class="reroute-banner">↺ REROUTED${saved&&saved>0?` · ↓ ${saved} min saved`:""}</div>`:"";
+  const jamAlert=h.jam_detected?`<div class="jam-alert">⚠ JAM DETECTED · Confidence: ${Math.round((h.jam_confidence||0)*100)}%</div>`:"";
+  document.getElementById("route-card").innerHTML=`
+    ${rerouteBanner}
+    <div class="eta-big">${h.travel_time_min} <span style="font-size:.9rem;color:var(--muted);">min</span></div>
+    <div class="rg">
+      <div class="rg-i"><div class="rg-l">Distance</div><div class="rg-v">${h.distance_km} km</div></div>
+      <div class="rg-i"><div class="rg-l">Method</div><div class="rg-v" style="font-size:.62rem;">${h.routing_method||"—"}</div></div>
+      <div class="rg-i"><div class="rg-l">Traffic</div><div class="rg-v">${(h.traffic_period||"—").replace("_"," ")}</div></div>
+      <div class="rg-i"><div class="rg-l">Multiplier</div><div class="rg-v">${h.traffic_multiplier?h.traffic_multiplier.toFixed(2)+"×":"—"}</div></div>
+      <div class="rg-i"><div class="rg-l">Waypoints</div><div class="rg-v">${h.map_waypoints||"—"}</div></div>
+      <div class="rg-i"><div class="rg-l">Tier</div><div class="rg-v">${h.tier||"—"}</div></div>
+    </div>${jamAlert}`;
+}
+
+/* ── Terminal log (mirrors main.py ───────────────────── console output) ── */
+function buildRouteLog(h,rerouted,saved){
+  const logEl=rerouted?document.getElementById("reroute-log"):document.getElementById("route-log");
+  if(rerouted) logEl.style.display="";
+  const sep='─'.repeat(54);
+  const title=rerouted?"REROUTED ROUTE":"ROUTE RESULT";
+  const savedLine=saved!==null?`  <span class="log-green">ETA saved   : ↓ ${Math.abs(saved)} min</span>\n`:"";
+  const rerouteLine=rerouted&&h.reroute_mode?`  <span class="log-key">Reroute     :</span> <span class="log-val">MODE ${h.reroute_mode} — alley shortcut direct (< 1.5 km to hospital)</span>\n`:"";
+  const remLine=h.reroute_trigger_km?`  <span class="log-key">Remaining   :</span> <span class="log-val">${h.reroute_trigger_km} km at reroute trigger</span>\n`:"";
+  const jamLine=h.jam_radius?`  <span class="log-key">Jam point   :</span> <span class="log-warn">${S.ambLat?.toFixed(4)}, ${S.ambLon?.toFixed(4)}</span>\n  <span class="log-key">Jam radius  :</span> <span class="log-warn">${h.jam_radius} m  (est. queue ~${h.jam_queue_km} km)</span>\n  <span class="log-key">Edges slowed:</span> <span class="log-warn">${h.jam_edges}</span>\n`:"";
+  logEl.innerHTML=`<span class="log-sep">${sep}</span>
+  <span class="log-header">${title}: ${h.name}</span>
+<span class="log-sep">${sep}</span>
+  <span class="log-key">Distance    :</span> <span class="log-accent">${h.distance_km} km</span>
+  <span class="log-key">ETA         :</span> <span class="log-accent">${h.travel_time_min} min</span>${saved!==null?" <span class=\"log-green\">↓ "+Math.abs(saved)+" min saved vs previous route</span>":""}
+  <span class="log-key">Method      :</span> <span class="log-val">${h.routing_method||"—"}</span>
+  <span class="log-key">Tier        :</span> <span class="log-val">${h.tier||"—"}</span>
+${rerouteLine}${remLine}  <span class="log-key">Waypoints   :</span> <span class="log-val">${h.map_waypoints||"—"} (from ${h.raw_waypoints||h.map_waypoints||"—"} raw)</span>
+  <span class="log-key">Lanes used  :</span> <span class="log-val">${h.lanes_used?"Yes (alleys/shortcuts)":"No"}</span>
+  <span class="log-key">Traffic     :</span> <span class="log-val">✓ ${h.traffic_period?.replace("_"," ")||"—"} (${Math.round((h.traffic_multiplier||1.0)*100-100)}% jam chance)</span>
+${jamLine}  <span class="log-key">Why chosen  :</span> <span class="log-val">${h.recommendation||"—"}</span>
+<span class="log-sep">${sep}</span>`;
+  // Scroll to bottom
+  logEl.scrollTop=logEl.scrollHeight;
+}
+
+/* ═══════════════════════ SIMULATION ═══════════════════════ */
+function stepAmb(){
+  const coords=S.rerouteCoords.length?S.rerouteCoords:S.routeCoords;
+  if(!coords.length){toast("No route loaded");return;}
+  S.simIndex=Math.min(S.simIndex+3,coords.length-1);
+  const[la,lo]=coords[S.simIndex];
+  S.ambLat=la;S.ambLon=lo;S.ambPos=[la,lo];
+  drawAmbulance([la,lo]);updateSimPos();
+  if(S.simIndex>=coords.length-1) toast("🏁 Ambulance arrived at hospital!");
+}
+
+function updateSimPos(){
+  const coords=S.rerouteCoords.length?S.rerouteCoords:S.routeCoords;
+  const el=document.getElementById("sim-pos");
+  if(!coords.length){el.textContent="Position: —";return;}
+  const[la,lo]=coords[S.simIndex];
+  const pct=Math.round(S.simIndex/Math.max(coords.length-1,1)*100);
+  el.textContent=`${la.toFixed(5)}, ${lo.toFixed(5)} · ${pct}% complete`;
+}
+
+async function triggerJam(){
+  if(!S.routeResult){toast("Compute a route first");return;}
+  const coords=S.rerouteCoords.length?S.rerouteCoords:S.routeCoords;
+  const[jLa,jLo]=coords[S.simIndex]||[S.ambLat,S.ambLon];
+  S.ambLat=jLa;S.ambLon=jLo;S.ambPos=[jLa,jLo];
+  const h=S.routeResult.hospital;
+  drawJamOverlay(jLa,jLo,h.jam_radius,h.jam_queue_km,h.jam_edges);
+  toast("⚠ Jam reported — rerouting…");setStatus("⚠ JAM — Rerouting…");
+  document.getElementById("jam-badge").style.display="none";
+  const prevEta=h.travel_time_min;
+  let data;
+  if(S.backendOnline){
+    try{
+      const res=await fetch(`${API}/reroute`,{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({hospital:h,new_amb_lat:jLa,new_amb_lon:jLo,extra_jams:[],prev_eta:prevEta})});
+      if(!res.ok)throw new Error((await res.json()).detail||"Reroute error");
+      data=await res.json();
+    }catch{data=simRoute(S.selected||h,true,jLa,jLo);}
+  }else{data=simRoute(S.selected||h,true,jLa,jLo);}
+  handleRoute(data,true);S.simIndex=0;
+  const sv=data.eta_saved_min;
+  toast(`↺ Rerouted!${sv&&sv>0?" ↓ "+sv+" min saved":" New path computed"}`);
+}
+
+function resetSim(){
+  S.simIndex=0;S.rerouteCoords=[];
+  clearJam();
+  if(rerouteLayer){map.removeLayer(rerouteLayer);rerouteLayer=null;}
+  if(S.routeCoords.length){S.ambPos=S.routeCoords[0];S.ambLat=S.routeCoords[0][0];S.ambLon=S.routeCoords[0][1];}
+  drawAmbulance(S.ambPos);updateSimPos();
+  document.getElementById("reroute-log").style.display="none";
+  toast("Simulation reset");
+}
+
+/* ═══════════════════════ KEYBOARD ═══════════════════════ */
+document.addEventListener("keydown",e=>{
+  if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT")return;
+  if(e.key==="ArrowRight"){e.preventDefault();stepAmb();}
+  if(e.key==="j"||e.key==="J")triggerJam();
+  if(e.key==="r"||e.key==="R")resetSim();
+  if(e.key==="f"||e.key==="F")fitAll();
+  if(e.key==="+"||e.key==="=")map.setZoom(map.getZoom()+1);
+  if(e.key==="-")map.setZoom(map.getZoom()-1);
+});
+
+/* ═══════════════════════ CONNECTIVITY ═══════════════════════ */
+async function checkConn(){
+  // Backend check
+  try{const r=await fetch(`${API}/health`,{signal:AbortSignal.timeout(2500)});S.backendOnline=r.ok;}
+  catch{S.backendOnline=false;}
+  const dbe=document.getElementById("d-be"),lbe=document.getElementById("l-be"),pbe=document.getElementById("pill-be");
+  dbe.className="dot "+(S.backendOnline?"on":"off");
+  lbe.textContent=S.backendOnline?"Backend ✓":"Backend ✗";
+  pbe.className="pill "+(S.backendOnline?"active":"");
+
+  // Network check
+  try{await fetch("https://www.gstatic.com/generate_204",{mode:"no-cors",signal:AbortSignal.timeout(2000)});S.netOnline=true;}
+  catch{S.netOnline=false;}
+  const dn=document.getElementById("d-net"),ln=document.getElementById("l-net"),pn=document.getElementById("pill-net");
+  dn.className="dot "+(S.netOnline?"on":"off");
+  ln.textContent=S.netOnline?"Net ✓":"Net ✗";
+  pn.className="pill "+(S.netOnline?"active":"");
+
+  // Offline mode pill
+  const op=document.getElementById("pill-offline");
+  op.style.display=!S.backendOnline&&!S.netOnline?"":"none";
+}
+
+async function fetchTraffic(){
+  if(!S.backendOnline)return;
+  try{
+    const r=await fetch(`${API}/traffic`,{signal:AbortSignal.timeout(3000)});if(!r.ok)return;
+    const t=await r.json();
+    const p=(t.traffic_period||"unknown").replace("_"," ").toUpperCase();
+    document.getElementById("d-tr").className="dot "+(t.jam_expected?"jam":"on");
+    document.getElementById("l-tr").textContent=`${p} · ${(t.avg_multiplier||1).toFixed(2)}×`;
+    document.getElementById("t-pill").style.display="flex";
+  }catch{}
+}
+
+/* ═══════════════════════ UTILS ═══════════════════════ */
+function show(id){document.getElementById(id).style.display="";}
+function setStatus(m){document.getElementById("map-status").textContent=m;}
+let _tt;
+function toast(m){const e=document.getElementById("toast");e.textContent=m;e.classList.add("show");clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove("show"),3400);}
+function setBtnLoad(id,lbl){const b=document.getElementById(id);b.disabled=true;b.innerHTML=`<span class="spin"></span>${lbl}`;}
+function resetBtn(id,lbl){const b=document.getElementById(id);b.disabled=false;b.innerHTML=lbl;}
+
+/* ═══════════════════════ INIT ═══════════════════════ */
+(async()=>{await checkConn();await fetchTraffic();setInterval(checkConn,15000);setInterval(fetchTraffic,30000);})();
+</script>
+</body>
+</html>
