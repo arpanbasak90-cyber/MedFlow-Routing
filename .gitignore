@@ -1,0 +1,8 @@
+__pycache__/
+cache/
+*.pkl
+output.json
+map.html
+tempCode.py
+*.pyc
+.env
