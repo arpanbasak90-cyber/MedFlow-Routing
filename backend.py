@@ -188,7 +188,7 @@ def _current_traffic():
   def _get_real_road_route(from_lat, from_lon, to_lat, to_lon):
     import urllib.request, json
     url = (
-        f"http://router.project-osrm.org/route/v1/driving/"
+        f"https://router.project-osrm.org/route/v1/driving/"
         f"{from_lon},{from_lat};{to_lon},{to_lat}"
         f"?overview=full&geometries=geojson&steps=false"
     )
