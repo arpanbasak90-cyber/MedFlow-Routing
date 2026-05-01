@@ -48,11 +48,11 @@ class OnlineRouter:
         radius_m:    int  = 5000,
         slow_edges:  list = None,   # list of [lat, lon] jam points
     ) -> dict:
-        try:
+      try:
             import osmnx as ox  # noqa: F401 — availability check
         except ImportError:
-            log.warning("osmnx not installed — straight-line fallback")
-            return self._straight_line(origin_lat, origin_lon, dest_lat, dest_lon)
+            log.warning("osmnx not installed — trying OSRM")
+            return self._osrm_route(origin_lat, origin_lon, dest_lat, dest_lon)
 
         dist_km = _haversine_km(origin_lat, origin_lon, dest_lat, dest_lon)
         r       = max(radius_m, int(dist_km * 500 * 1.30), 5000)
