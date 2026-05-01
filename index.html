@@ -852,7 +852,15 @@ function setBtnLoad(id,lbl){const b=document.getElementById(id);b.disabled=true;
 function resetBtn(id,lbl){const b=document.getElementById(id);b.disabled=false;b.innerHTML=lbl;}
 
 /* ═══════════════════════ INIT ═══════════════════════ */
-(async()=>{await checkConn();await fetchTraffic();setInterval(checkConn,15000);setInterval(fetchTraffic,30000);})();
+(async()=>{await checkConn();await fetchTraffic();setInterval(checkConn,15000);setInterval(fetchTraffic,30000);}
+// Keep backend alive
+function keepBackendAlive() {
+  fetch("https://medflow-routing.onrender.com/health")
+    .then(() => console.log("Backend alive"))
+    .catch(() => console.log("Backend waking up..."));
+}
+keepBackendAlive();
+setInterval(keepBackendAlive, 240000);
 </script>
 </body>
 </html>

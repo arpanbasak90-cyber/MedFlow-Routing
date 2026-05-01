@@ -1,3 +1,14 @@
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"message": "Server is working"}
+
+@app.get("/health")      
+def health_check():
+    return {"status": "ok"}  
 """
 main.py — MediAlert: AI-Powered Ambulance Routing System v5.2
 ==============================================================
@@ -512,3 +523,4 @@ def _step(n, total, msg):
 
 if __name__ == "__main__":
     main()
+
