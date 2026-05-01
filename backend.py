@@ -185,6 +185,21 @@ def _current_traffic():
         "jam_expected": jam,
         "hour": hour,
     }
+  def _get_real_road_route(from_lat, from_lon, to_lat, to_lon):
+    import urllib.request, json
+    url = (
+        f"http://router.project-osrm.org/route/v1/driving/"
+        f"{from_lon},{from_lat};{to_lon},{to_lat}"
+        f"?overview=full&geometries=geojson&steps=false"
+    )
+    try:
+        with urllib.request.urlopen(url, timeout=8) as r:
+            data = json.loads(r.read())
+        coords = data["routes"][0]["geometry"]["coordinates"]
+        return [[c[1], c[0]] for c in coords]
+    except Exception as e:
+        log.warning(f"OSRM failed ({e}) — arc fallback")
+        return None
 
 
 def _sim_route_coords(from_lat, from_lon, to_lat, to_lon, rerouted=False, steps=60):
@@ -204,7 +219,8 @@ def _sim_route(hospital: dict, amb_lat, amb_lon, rerouted=False, prev_eta=None):
     traffic = _current_traffic()
     mult = 1.05 if rerouted else traffic["avg_multiplier"]
     eta = round(dist / 40 * 60 * mult, 2)
-    coords = _sim_route_coords(amb_lat, amb_lon, hospital["latitude"], hospital["longitude"], rerouted)
+    real_coords = _get_real_road_route(amb_lat, amb_lon, hospital["latitude"], hospital["longitude"])
+    coords = real_coords if real_coords else _sim_route_coords(amb_lat, amb_lon, hospital["latitude"], hospital["longitude"], rerouted)
     rem_km = round(_haversine_km(amb_lat, amb_lon, hospital["latitude"], hospital["longitude"]), 3)
     eta_saved = round(prev_eta - eta, 1) if prev_eta is not None else None
 
