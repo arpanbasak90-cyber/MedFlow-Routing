@@ -358,39 +358,34 @@ def predict(req: PredictRequest):
 
 @app.post("/route")
 def route(req: RouteRequest):
-    if _PROJECT_LOADED:
-        try:
-            engine  = _get_engine(force_offline=req.force_offline)
-            updated = engine.route_to_selected_hospital(
-                req.ambulance_lat, req.ambulance_lon,
-                req.hospital, slow_edges=req.slow_edges or [],
-            )
-            traffic = get_current_traffic_summary()
-            eta_saved = None
-        except Exception as e:
-            log.warning(f"Full routing failed ({e}), falling back to simulation.")
-            updated, eta_saved = _sim_route(req.hospital, req.ambulance_lat, req.ambulance_lon)
-            traffic = _current_traffic()
-    else:
+    try:
+        from online_router import OnlineRouter
+        _router = OnlineRouter()
+        result = _router._osrm_route(
+            req.ambulance_lat, req.ambulance_lon,
+            req.hospital["latitude"], req.hospital["longitude"]
+        )
+        updated = {**req.hospital,
+            "route": result["route_coords"],
+            "routing_method": result["routing_method"],
+            "travel_time_min": result["travel_time_min"],
+            "distance_km": result["distance_km"],
+            "jam_detected": False,
+            "jam_confidence": 0.0,
+            "traffic_multiplier": result["traffic_multiplier"],
+            "traffic_period": result["traffic_period"],
+            "lanes_used": True,
+            "tier": "medium",
+            "map_waypoints": result["map_waypoints"],
+            "raw_waypoints": result["raw_waypoints"],
+            "jam_radius": 80, "jam_queue_km": 0.24, "jam_edges": 14,
+        }
+        eta_saved = None
+        traffic = get_current_traffic_summary() if _PROJECT_LOADED else _current_traffic()
+    except Exception as e:
+        log.warning(f"OSRM routing failed ({e}), falling back to simulation.")
         updated, eta_saved = _sim_route(req.hospital, req.ambulance_lat, req.ambulance_lon)
         traffic = _current_traffic()
-
-    return {
-        "hospital":   updated,
-        "rerouted":   False,
-        "eta_saved_min": eta_saved,
-        "traffic_summary": traffic,
-        "routing_summary": {
-            "method":          updated.get("routing_method"),
-            "tier":            updated.get("tier"),
-            "distance_km":     updated.get("distance_km"),
-            "travel_time_min": updated.get("travel_time_min"),
-            "lanes_used":      updated.get("lanes_used"),
-            "jam_detected":    updated.get("jam_detected"),
-            "jam_confidence":  updated.get("jam_confidence"),
-        },
-    }
-
 
 @app.post("/reroute")
 def reroute(req: RerouteRequest):
