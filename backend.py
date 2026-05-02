@@ -185,21 +185,6 @@ def _current_traffic():
         "jam_expected": jam,
         "hour": hour,
     }
-  def _get_real_road_route(from_lat, from_lon, to_lat, to_lon):
-    import urllib.request, json
-    url = (
-        f"https://router.project-osrm.org/route/v1/driving/"
-        f"{from_lon},{from_lat};{to_lon},{to_lat}"
-        f"?overview=full&geometries=geojson&steps=false"
-    )
-    try:
-        with urllib.request.urlopen(url, timeout=8) as r:
-            data = json.loads(r.read())
-        coords = data["routes"][0]["geometry"]["coordinates"]
-        return [[c[1], c[0]] for c in coords]
-    except Exception as e:
-        log.warning(f"OSRM failed ({e}) — arc fallback")
-        return None
 
 
 def _sim_route_coords(from_lat, from_lon, to_lat, to_lon, rerouted=False, steps=60):
