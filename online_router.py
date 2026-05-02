@@ -1,13 +1,10 @@
 """
-online_router.py — Online A* Router v5.0
+online_router.py — Online A* Router v5.1
 =========================================
-v5.0 changes
+v5.1 changes
 ------------
-• blocked_edges removed entirely.
-• slow_edges now accepts a list of [lat, lon] jam point pairs
-  (each pair is expanded to a radius by apply_jam_point in offline_router).
-• Falls back gracefully: OnlineRouter → OfflineRouter → straight-line.
-• get_current_traffic_summary() re-exported for frontend use.
+• OSRM public API fallback when osmnx is unavailable.
+• Falls back gracefully: OnlineRouter → OSRM → OfflineRouter → straight-line.
 """
 
 from __future__ import annotations
@@ -31,7 +28,7 @@ log = logging.getLogger(__name__)
 class OnlineRouter:
     """
     Fetches fresh OSM data keyed by hospital ID (via graph_cache_manager).
-    Falls back to OfflineRouter then straight-line on any error.
+    Falls back to OSRM then OfflineRouter then straight-line on any error.
     slow_edges = list of [lat, lon] jam epicentre points.
     """
 
@@ -46,9 +43,9 @@ class OnlineRouter:
         dest_lon:    float,
         hosp_id:     str  = "unknown",
         radius_m:    int  = 5000,
-        slow_edges:  list = None,   # list of [lat, lon] jam points
+        slow_edges:  list = None,
     ) -> dict:
-      try:
+        try:
             import osmnx as ox  # noqa: F401 — availability check
         except ImportError:
             log.warning("osmnx not installed — trying OSRM")
@@ -74,11 +71,8 @@ class OnlineRouter:
             return result
 
         except Exception as e:
-            log.warning(f"Online routing failed ({e}) — offline fallback")
-            return self._offline_fallback(
-                origin_lat, origin_lon, dest_lat, dest_lon,
-                hosp_id, dest_lat, dest_lon, r, slow_edges,
-            )
+            log.warning(f"Online routing failed ({e}) — OSRM fallback")
+            return self._osrm_route(origin_lat, origin_lon, dest_lat, dest_lon)
 
     def _offline_fallback(
         self,
@@ -98,6 +92,40 @@ class OnlineRouter:
             log.warning(f"Offline fallback failed ({e}) — straight line")
             return self._straight_line(origin_lat, origin_lon, dest_lat, dest_lon)
 
+    def _osrm_route(self, lat1, lon1, lat2, lon2) -> dict:
+        import urllib.request, json
+        try:
+            url = (
+                f"https://router.project-osrm.org/route/v1/driving/"
+                f"{lon1},{lat1};{lon2},{lat2}"
+                f"?overview=full&geometries=geojson&steps=false"
+            )
+            with urllib.request.urlopen(url, timeout=10) as r:
+                data = json.loads(r.read())
+            coords = [[c[1], c[0]] for c in data["routes"][0]["geometry"]["coordinates"]]
+            dist = _haversine_km(lat1, lon1, lat2, lon2)
+            mult = _estimate_congestion("primary")
+            log.info(f"OSRM route: {len(coords)} waypoints, {dist:.2f} km")
+            return {
+                "success":            True,
+                "routing_method":     "osrm_online",
+                "route_coords":       coords,
+                "distance_km":        round(dist, 3),
+                "travel_time_min":    round(dist / 40 * 60 * mult, 2),
+                "raw_waypoints":      len(coords),
+                "map_waypoints":      len(coords),
+                "road_types_used":    ["primary"],
+                "lanes_used":         True,
+                "jam_detected":       False,
+                "jam_confidence":     0.0,
+                "traffic_multiplier": round(mult, 2),
+                "traffic_period":     _get_traffic_period(),
+                "jam_points":         [],
+            }
+        except Exception as e:
+            log.warning(f"OSRM failed ({e}) — straight line")
+            return self._straight_line(lat1, lon1, lat2, lon2)
+
     def _straight_line(self, lat1, lon1, lat2, lon2) -> dict:
         dist = _haversine_km(lat1, lon1, lat2, lon2)
         mult = _estimate_congestion("primary")
@@ -105,14 +133,14 @@ class OnlineRouter:
         return {
             "success":            True,
             "routing_method":     "straight_line_fallback",
-            "route_coords":       [[lat1,lon1],[lat2,lon2]],
+            "route_coords":       [[lat1, lon1], [lat2, lon2]],
             "distance_km":        round(dist, 3),
             "travel_time_min":    round(eta, 2),
             "raw_waypoints":      2, "map_waypoints": 2,
             "road_types_used":    [],
             "lanes_used":         False,
             "jam_detected":       mult >= JAM_DETECTION_MULTIPLIER,
-            "jam_confidence":     round(min((mult-1.0)/1.5, 1.0), 2),
+            "jam_confidence":     round(min((mult - 1.0) / 1.5, 1.0), 2),
             "traffic_multiplier": round(mult, 2),
             "traffic_period":     _get_traffic_period(),
             "jam_points":         [],
