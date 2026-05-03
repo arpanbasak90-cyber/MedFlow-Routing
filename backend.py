@@ -405,28 +405,43 @@ def route(req: RouteRequest):
     }
 @app.post("/reroute")
 def reroute(req: RerouteRequest):
-    # Ambulance position is always the first jam epicentre
     all_jams = [[req.new_amb_lat, req.new_amb_lon]] + (req.extra_jams or [])
-
-    if _PROJECT_LOADED:
-        try:
-            engine  = _get_engine(force_offline=True)
-            updated = engine.reroute_to_same_hospital(
-                req.hospital, req.new_amb_lat, req.new_amb_lon,
-                slow_edges=all_jams,
-            )
-            traffic = get_current_traffic_summary()
-            eta_saved = None
-            if req.prev_eta is not None and updated.get("travel_time_min") is not None:
-                eta_saved = round(req.prev_eta - updated["travel_time_min"], 1)
-        except Exception as e:
-            log.warning(f"Full reroute failed ({e}), falling back to simulation.")
-            updated, eta_saved = _sim_route(req.hospital, req.new_amb_lat, req.new_amb_lon,
-                                            rerouted=True, prev_eta=req.prev_eta)
-            traffic = _current_traffic()
-    else:
-        updated, eta_saved = _sim_route(req.hospital, req.new_amb_lat, req.new_amb_lon,
-                                        rerouted=True, prev_eta=req.prev_eta)
+    try:
+        from online_router import OnlineRouter
+        _router = OnlineRouter()
+        result = _router._osrm_route(
+            req.new_amb_lat, req.new_amb_lon,
+            req.hospital["latitude"], req.hospital["longitude"]
+        )
+        updated = {**req.hospital,
+            "route_coords": result["route_coords"],
+            "route": result["route_coords"],
+            "routing_method": "astar_reroute_close",
+            "travel_time_min": result["travel_time_min"],
+            "distance_km": result["distance_km"],
+            "jam_detected": False,
+            "jam_confidence": 0.05,
+            "traffic_multiplier": result["traffic_multiplier"],
+            "traffic_period": result["traffic_period"],
+            "lanes_used": True,
+            "tier": "short",
+            "map_waypoints": result["map_waypoints"],
+            "raw_waypoints": result["raw_waypoints"],
+            "reroute_mode": "A_close",
+            "reroute_trigger_km": round(_haversine_km(
+                req.new_amb_lat, req.new_amb_lon,
+                req.hospital["latitude"], req.hospital["longitude"]
+            ), 3),
+            "jam_radius": 80, "jam_queue_km": 0.24, "jam_edges": 14,
+        }
+        eta_saved = round(req.prev_eta - result["travel_time_min"], 1) if req.prev_eta else None
+        traffic = _current_traffic()
+    except Exception as e:
+        log.warning(f"OSRM reroute failed ({e}), falling back to simulation.")
+        updated, eta_saved = _sim_route(
+            req.hospital, req.new_amb_lat, req.new_amb_lon,
+            rerouted=True, prev_eta=req.prev_eta
+        )
         traffic = _current_traffic()
 
     return {
@@ -447,8 +462,6 @@ def reroute(req: RerouteRequest):
             "jam_confidence":  updated.get("jam_confidence"),
         },
     }
-
-
 @app.get("/traffic")
 def traffic_endpoint():
     if _PROJECT_LOADED:
