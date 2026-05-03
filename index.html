@@ -672,7 +672,7 @@ function simRoute(h,rerouted,fromLat,fromLon){
 function handleRoute(data,isReroute){
   S.routeResult=data;
   const h=data.hospital;
-  const coords=(h.route||[]).map(c=>[c[0],c[1]]);
+  const coords = (h.route_coords || h.route || []).map(c => [c[0], c[1]]);
   if(isReroute){
     S.rerouteCoords=coords;
     if(rerouteLayer){map.removeLayer(rerouteLayer);}
@@ -852,7 +852,7 @@ function setBtnLoad(id,lbl){const b=document.getElementById(id);b.disabled=true;
 function resetBtn(id,lbl){const b=document.getElementById(id);b.disabled=false;b.innerHTML=lbl;}
 
 /* ═══════════════════════ INIT ═══════════════════════ */
-(async()=>{await checkConn();await fetchTraffic();setInterval(checkConn,15000);setInterval(fetchTraffic,30000);}
+(async()=>{await checkConn();await fetchTraffic();setInterval(checkConn,15000);setInterval(fetchTraffic,30000);})();
 // Keep backend alive
 function keepBackendAlive() {
   fetch("https://medflow-routing.onrender.com/health")
