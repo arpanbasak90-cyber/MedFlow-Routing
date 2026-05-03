@@ -366,6 +366,7 @@ def route(req: RouteRequest):
             req.hospital["latitude"], req.hospital["longitude"]
         )
         updated = {**req.hospital,
+            "route_coords": result["route_coords"],
             "route": result["route_coords"],
             "routing_method": result["routing_method"],
             "travel_time_min": result["travel_time_min"],
@@ -387,6 +388,21 @@ def route(req: RouteRequest):
         updated, eta_saved = _sim_route(req.hospital, req.ambulance_lat, req.ambulance_lon)
         traffic = _current_traffic()
 
+    return {
+        "hospital":      updated,
+        "rerouted":      False,
+        "eta_saved_min": eta_saved,
+        "traffic_summary": traffic,
+        "routing_summary": {
+            "method":          updated.get("routing_method"),
+            "tier":            updated.get("tier"),
+            "distance_km":     updated.get("distance_km"),
+            "travel_time_min": updated.get("travel_time_min"),
+            "lanes_used":      updated.get("lanes_used"),
+            "jam_detected":    updated.get("jam_detected"),
+            "jam_confidence":  updated.get("jam_confidence"),
+        },
+    }
 @app.post("/reroute")
 def reroute(req: RerouteRequest):
     # Ambulance position is always the first jam epicentre
